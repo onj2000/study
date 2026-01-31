@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Study Focus</title>
+    <!-- PWA用の設定: ホーム画面に追加した時にアプリのように動作します -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/svgs/solid/clock.svg">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -141,7 +146,10 @@
     <!-- Settings Modal -->
     <div id="settings-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center p-6 z-50">
         <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 space-y-6">
-            <h3 class="font-bold text-xl text-slate-800">Settings</h3>
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-xl text-slate-800">Settings</h3>
+                <span class="text-[10px] text-slate-400">Ver 1.2</span>
+            </div>
             
             <div class="space-y-4">
                 <div>
@@ -210,7 +218,7 @@
             localStorage.setItem('is_muted', isMuted);
             updateMuteUI();
             if (!isMuted) {
-                playAlarm(); // ミュート解除時に確認音
+                playAlarm(); 
             }
         }
 
@@ -233,7 +241,7 @@
         }
 
         function playAlarm() {
-            if (isMuted) return; // ミュート時は何もしない
+            if (isMuted) return; 
 
             const icon = document.getElementById('sound-icon');
             icon.classList.add('is-ringing');
