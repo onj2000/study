@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Study Focus Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@500&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f8fafc;
+        }
+        .timer-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="max-w-md w-full glass-card rounded-3xl p-8 space-y-8">
+        <!-- Header -->
+        <div class="text-center">
+            <h1 class="text-2xl font-semibold text-slate-800 tracking-tight">学習記録タイマー</h1>
+            <p class="text-slate-500 text-sm mt-1">今日の成果を記録しよう</p>
+        </div>
+
+        <!-- Mode Toggle -->
+        <div class="flex bg-slate-100 p-1 rounded-xl">
+            <button onclick="setMode('stopwatch')" id="btn-stopwatch" class="flex-1 py-2 text-sm font-medium rounded-lg transition-all bg-white shadow-sm text-indigo-600">
+                ストップウォッチ
+            </button>
+            <button onclick="setMode('timer')" id="btn-timer" class="flex-1 py-2 text-sm font-medium rounded-lg transition-all text-slate-500 hover:text-slate-700">
+                タイマー
+            </button>
+        </div>
+
+        <!-- Input Section -->
+        <div class="space-y-4">
+            <div>
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">教科</label>
+                <input type="text" id="subject" placeholder="例: 数学, 英語" 
+                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all">
+            </div>
+            
+            <div id="timer-setting" class="hidden">
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">設定時間 (分)</label>
+                <input type="number" id="target-minutes" value="25" min="1"
+                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all">
+            </div>
+
+            <div>
+                <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1 block">一言メモ</label>
+                <input type="text" id="memo" placeholder="意気込みや感想" 
+                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all">
+            </div>
+        </div>
+
+        <!-- Timer Display -->
+        <div class="text-center py-6">
+            <div id="display" class="timer-display text-6xl font-medium text-slate-800 mb-2">00:00:00</div>
+            <div id="status-label" class="text-xs font-medium text-indigo-500 uppercase tracking-[0.2em]">Ready</div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex gap-4">
+            <button id="main-btn" onclick="toggleTimer()" 
+                class="flex-[2] bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-4 rounded-2xl shadow-lg shadow-indigo-200 transition-all flex items-center justify-center gap-2">
+                <i id="main-icon" class="fas fa-play"></i>
+                <span id="main-text">スタート</span>
+            </button>
+            <button onclick="resetTimer()" 
+                class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold py-4 rounded-2xl transition-all flex items-center justify-center">
+                <i class="fas fa-redo"></i>
+            </button>
+        </div>
+
+        <!-- Spreadsheet Settings (Collapsible) -->
+        <div class="pt-4 border-t border-slate-100">
+            <details class="group">
+                <summary class="list-none text-xs text-slate-400 cursor-pointer text-center hover:text-slate-600 transition-colors">
+                    <i class="fas fa-cog mr-1"></i> スプレッドシート設定
+                </summary>
+                <div class="mt-4 space-y-2">
+                    <input type="password" id="gas-url" placeholder="GAS ウェブアプリのURLを入力" 
+                        class="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 outline-none">
+                    <p class="text-[10px] text-slate-400 italic text-center">※デプロイ後に取得したURLをここに貼り付けてください</p>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full text-sm font-medium opacity-0 transition-opacity pointer-events-none">
+        記録を送信しました
+    </div>
+
+    <script>
+        let mode = 'stopwatch'; // 'stopwatch' or 'timer'
+        let timerId = null;
+        let totalSeconds = 0;
+        let isRunning = false;
+
+        const display = document.getElementById('display');
+        const mainBtn = document.getElementById('main-btn');
+        const mainIcon = document.getElementById('main-icon');
+        const mainText = document.getElementById('main-text');
+        const statusLabel = document.getElementById('status-label');
+        const toast = document.getElementById('toast');
+
+        function setMode(newMode) {
+            if (isRunning) return;
+            mode = newMode;
+            
+            // Toggle UI classes
+            const swBtn = document.getElementById('btn-stopwatch');
+            const tBtn = document.getElementById('btn-timer');
+            const tSetting = document.getElementById('timer-setting');
+
+            if (mode === 'stopwatch') {
+                swBtn.classList.add('bg-white', 'shadow-sm', 'text-indigo-600');
+                swBtn.classList.remove('text-slate-500');
+                tBtn.classList.remove('bg-white', 'shadow-sm', 'text-indigo-600');
+                tBtn.classList.add('text-slate-500');
+                tSetting.classList.add('hidden');
+                totalSeconds = 0;
+            } else {
+                tBtn.classList.add('bg-white', 'shadow-sm', 'text-indigo-600');
+                tBtn.classList.remove('text-slate-500');
+                swBtn.classList.remove('bg-white', 'shadow-sm', 'text-indigo-600');
+                swBtn.classList.add('text-slate-500');
+                tSetting.classList.remove('hidden');
+                updateTimerFromInput();
+            }
+            updateDisplay();
+        }
+
+        function updateTimerFromInput() {
+            if (mode === 'timer') {
+                const mins = document.getElementById('target-minutes').value;
+                totalSeconds = (parseInt(mins) || 0) * 60;
+                updateDisplay();
+            }
+        }
+
+        function formatTime(secs) {
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            const s = secs % 60;
+            return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
+        }
+
+        function updateDisplay() {
+            display.innerText = formatTime(totalSeconds);
+        }
+
+        function toggleTimer() {
+            if (isRunning) {
+                stopTimer();
+            } else {
+                startTimer();
+            }
+        }
+
+        function startTimer() {
+            if (mode === 'timer' && totalSeconds <= 0) {
+                updateTimerFromInput();
+            }
+            
+            isRunning = true;
+            mainText.innerText = '終了して保存';
+            mainIcon.className = 'fas fa-stop';
+            mainBtn.classList.replace('bg-indigo-600', 'bg-rose-500');
+            mainBtn.classList.replace('hover:bg-indigo-700', 'hover:bg-rose-600');
+            statusLabel.innerText = 'Focusing...';
+            statusLabel.classList.replace('text-indigo-500', 'text-rose-500');
+
+            timerId = setInterval(() => {
+                if (mode === 'stopwatch') {
+                    totalSeconds++;
+                } else {
+                    totalSeconds--;
+                    if (totalSeconds <= 0) {
+                        totalSeconds = 0;
+                        stopTimer();
+                    }
+                }
+                updateDisplay();
+            }, 1000);
+        }
+
+        async function stopTimer() {
+            clearInterval(timerId);
+            isRunning = false;
+            
+            // Revert UI
+            mainText.innerText = 'スタート';
+            mainIcon.className = 'fas fa-play';
+            mainBtn.classList.replace('bg-rose-500', 'bg-indigo-600');
+            mainBtn.classList.replace('hover:bg-rose-600', 'hover:bg-indigo-700');
+            statusLabel.innerText = 'Paused';
+            statusLabel.classList.replace('text-rose-500', 'text-indigo-500');
+
+            // Save to Spreadsheet
+            await saveData();
+        }
+
+        function resetTimer() {
+            if (isRunning) return;
+            if (mode === 'stopwatch') {
+                totalSeconds = 0;
+            } else {
+                updateTimerFromInput();
+            }
+            updateDisplay();
+            statusLabel.innerText = 'Ready';
+        }
+
+        async function saveData() {
+            const gasUrl = document.getElementById('gas-url').value;
+            const subject = document.getElementById('subject').value || '未分類';
+            const memo = document.getElementById('memo').value || '-';
+            const timeFormatted = formatTime(totalSeconds);
+
+            if (!gasUrl) {
+                showToast('URL未設定のため保存をスキップしました');
+                return;
+            }
+
+            const data = {
+                subject: subject,
+                seconds: totalSeconds,
+                formattedTime: timeFormatted,
+                memo: memo
+            };
+
+            try {
+                showToast('保存中...');
+                const response = await fetch(gasUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', // GAS requiring no-cors for simple posts
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                showToast('記録をスプレッドシートに送信しました');
+            } catch (error) {
+                console.error(error);
+                showToast('エラーが発生しました');
+            }
+        }
+
+        function showToast(msg) {
+            toast.innerText = msg;
+            toast.style.opacity = '1';
+            setTimeout(() => {
+                toast.style.opacity = '0';
+            }, 3000);
+        }
+
+        // Sync timer input change
+        document.getElementById('target-minutes').addEventListener('input', () => {
+            if (!isRunning && mode === 'timer') updateTimerFromInput();
+        });
+    </script>
+</body>
+</html>
