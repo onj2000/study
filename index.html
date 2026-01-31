@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Study Focus</title>
-    <!-- PWA用の設定: ホーム画面に追加した時にアプリのように動作します -->
+    <!-- PWA settings -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/svgs/solid/clock.svg">
@@ -70,12 +70,12 @@
     <div class="w-full max-w-sm flex-1 flex flex-col justify-center space-y-8">
         <!-- Header -->
         <div class="flex justify-between items-center px-2">
-            <div class="w-8"></div> <!-- Spacer -->
+            <div class="w-8"></div>
             <div class="text-center">
                 <h1 class="text-3xl font-semibold text-slate-800 tracking-tight">Focus Time</h1>
                 <p id="date-display" class="text-slate-400 text-sm mt-1"></p>
             </div>
-            <!-- 音量切り替え/テストボタン -->
+            <!-- Sound Toggle -->
             <div class="flex flex-col items-center gap-1">
                 <button onclick="toggleMute()" id="mute-btn" class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 active:scale-95 transition-all">
                     <i id="sound-icon" class="fas fa-volume-up"></i>
@@ -108,7 +108,7 @@
             </div>
         </div>
 
-        <!-- Forms -->
+        <!-- Input Forms -->
         <div class="space-y-3">
             <div class="relative">
                 <i class="fas fa-book absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
@@ -136,7 +136,7 @@
         </button>
     </div>
 
-    <!-- Settings Menu -->
+    <!-- Settings Trigger -->
     <div class="w-full max-w-sm mt-6 flex justify-center">
         <button onclick="toggleSettings()" class="text-slate-300 text-xs hover:text-slate-500">
             <i class="fas fa-cog"></i> App Settings
@@ -148,7 +148,7 @@
         <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 space-y-6">
             <div class="flex justify-between items-center">
                 <h3 class="font-bold text-xl text-slate-800">Settings</h3>
-                <span class="text-[10px] text-slate-400">Ver 1.2</span>
+                <span class="text-[10px] text-slate-400">Ver 1.4</span>
             </div>
             
             <div class="space-y-4">
@@ -162,13 +162,14 @@
 
                 <div>
                     <label class="text-xs font-bold text-slate-400 uppercase mb-2 block">Spreadsheet URL (GAS)</label>
-                    <input type="password" id="gas-url" placeholder="https://script.google.com/..." 
+                    <input type="text" id="gas-url" placeholder="https://script.google.com/..." 
                         class="w-full p-4 bg-slate-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-indigo-200 text-sm">
+                    <p class="text-[10px] text-slate-400 mt-1">※ GASで「全員」にデプロイしたURLを入力</p>
                 </div>
 
                 <div class="pt-2">
                     <button onclick="playTestSound()" class="w-full py-2 text-indigo-600 font-bold bg-indigo-50 rounded-lg text-sm">
-                        <i class="fas fa-play mr-2"></i>Test Sound Now
+                        <i class="fas fa-play mr-2"></i>Test Sound
                     </button>
                 </div>
             </div>
@@ -177,8 +178,8 @@
         </div>
     </div>
 
-    <!-- Feedback Toast -->
-    <div id="toast" class="fixed top-12 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-8 py-4 rounded-2xl text-sm font-medium opacity-0 transition-all pointer-events-none z-[100]">
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed top-12 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white px-8 py-4 rounded-2xl text-sm font-medium opacity-0 transition-all pointer-events-none z-[100] text-center min-w-[200px]">
         Saved Successfully
     </div>
 
@@ -192,9 +193,11 @@
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let volume = 0.5;
 
+        // Display current date
         const options = { month: 'short', day: 'numeric', weekday: 'short' };
         document.getElementById('date-display').innerText = new Date().toLocaleDateString('ja-JP', options);
 
+        // Initialization
         window.onload = () => {
             const savedUrl = localStorage.getItem('gas_url');
             if (savedUrl) document.getElementById('gas-url').value = savedUrl;
@@ -217,9 +220,6 @@
             isMuted = !isMuted;
             localStorage.setItem('is_muted', isMuted);
             updateMuteUI();
-            if (!isMuted) {
-                playAlarm(); 
-            }
         }
 
         function updateMuteUI() {
@@ -270,10 +270,9 @@
         function playTestSound() {
             if (audioCtx.state === 'suspended') audioCtx.resume();
             if (isMuted) {
-                showToast('Mute is active. Enable sound first.');
+                showToast('Mute is active.');
             } else {
                 playAlarm();
-                showToast('Testing sound...');
             }
         }
 
@@ -353,13 +352,23 @@
             clearInterval(timerId);
             isRunning = false;
             
+            // Save data before resetting
+            const secondsToSave = totalSeconds;
+            const formattedTimeToSave = formatTime(totalSeconds);
+            
             document.getElementById('main-text').innerText = 'Start';
             document.getElementById('main-icon').className = 'fas fa-play';
             document.getElementById('main-btn').classList.replace('bg-emerald-500', 'bg-indigo-600');
             document.getElementById('status-label').innerText = 'Session paused';
             document.getElementById('status-label').classList.remove('text-emerald-500');
 
-            await saveData();
+            // Force reset if stopwatch mode
+            if (mode === 'stopwatch') {
+                totalSeconds = 0;
+                updateDisplay();
+            }
+
+            await saveData(secondsToSave, formattedTimeToSave);
         }
 
         function resetTimer() {
@@ -369,32 +378,38 @@
             updateDisplay();
         }
 
-        async function saveData() {
-            const url = document.getElementById('gas-url').value || localStorage.getItem('gas_url');
-            if (url) localStorage.setItem('gas_url', url);
+        async function saveData(secs, formatted) {
+            let url = document.getElementById('gas-url').value.trim();
+            if (url) {
+                localStorage.setItem('gas_url', url);
+            } else {
+                url = localStorage.getItem('gas_url');
+            }
+
+            if (!url) {
+                showToast('URLを設定してください');
+                return;
+            }
 
             const data = {
                 subject: document.getElementById('subject').value || '未設定',
                 memo: document.getElementById('memo').value || '-',
-                seconds: totalSeconds,
-                formattedTime: formatTime(totalSeconds)
+                seconds: secs,
+                formattedTime: formatted
             };
 
-            if (!url) {
-                showToast('URL未設定。記録をリセットしました。');
-                return;
-            }
-
             try {
-                showToast('Saving to Cloud...');
+                showToast('Cloudに保存中...');
                 await fetch(url, {
                     method: 'POST',
                     mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                showToast('スプレッドシートに保存完了！');
+                showToast('スプレッドシートに送信完了！');
             } catch (e) {
-                showToast('保存失敗');
+                console.error('Fetch Error:', e);
+                showToast('保存エラーが発生しました');
             }
         }
 
