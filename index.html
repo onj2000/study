@@ -148,7 +148,7 @@
         <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 space-y-6">
             <div class="flex justify-between items-center">
                 <h3 class="font-bold text-xl text-slate-800">Settings</h3>
-                <span class="text-[10px] text-slate-400">Ver 1.4</span>
+                <span class="text-[10px] text-slate-400">Ver 1.5</span>
             </div>
             
             <div class="space-y-4">
@@ -324,7 +324,13 @@
         }
 
         function startTimer() {
-            if (mode === 'timer' && totalSeconds <= 0) updateTimerFromInput();
+            // ストップウォッチモードの場合、開始の瞬間にリセットする
+            if (mode === 'stopwatch') {
+                totalSeconds = 0;
+                updateDisplay();
+            } else if (mode === 'timer' && totalSeconds <= 0) {
+                updateTimerFromInput();
+            }
             
             isRunning = true;
             document.getElementById('main-text').innerText = 'Finish';
@@ -352,7 +358,7 @@
             clearInterval(timerId);
             isRunning = false;
             
-            // Save data before resetting
+            // 現在の値を保存用に保持
             const secondsToSave = totalSeconds;
             const formattedTimeToSave = formatTime(totalSeconds);
             
@@ -362,11 +368,7 @@
             document.getElementById('status-label').innerText = 'Session paused';
             document.getElementById('status-label').classList.remove('text-emerald-500');
 
-            // Force reset if stopwatch mode
-            if (mode === 'stopwatch') {
-                totalSeconds = 0;
-                updateDisplay();
-            }
+            // ここではリセットせず、画面に記録を残しておく（次のスタートでリセットされる）
 
             await saveData(secondsToSave, formattedTimeToSave);
         }
