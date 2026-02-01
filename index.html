@@ -148,7 +148,7 @@
         <div class="bg-white w-full max-w-sm rounded-[2rem] p-8 space-y-6">
             <div class="flex justify-between items-center">
                 <h3 class="font-bold text-xl text-slate-800">Settings</h3>
-                <span class="text-[10px] text-slate-400">Ver 1.5</span>
+                <span class="text-[10px] text-slate-400">Ver 1.6</span>
             </div>
             
             <div class="space-y-4">
@@ -165,7 +165,7 @@
                     <input type="text" id="gas-url" placeholder="https://script.google.com/..." 
                         class="w-full p-4 bg-slate-50 rounded-xl border-none outline-none focus:ring-2 focus:ring-indigo-200 text-sm">
                     <p class="text-[10px] text-slate-400 mt-1">※ GASで「全員」にデプロイしたURLを入力</p>
-                    <a href="https://github.com/onj2000/study/">詳しいやり方はこちらから</a>                </div>
+                </div>
 
                 <div class="pt-2">
                     <button onclick="playTestSound()" class="w-full py-2 text-indigo-600 font-bold bg-indigo-50 rounded-lg text-sm">
@@ -188,6 +188,7 @@
         let isRunning = false;
         let timerId = null;
         let totalSeconds = 0;
+        let initialTimerSeconds = 0; // タイマー開始時の設定時間を保持
         let isMuted = false;
 
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -303,6 +304,7 @@
         function updateTimerFromInput() {
             const mins = document.getElementById('target-minutes').value;
             totalSeconds = (parseInt(mins) || 0) * 60;
+            initialTimerSeconds = totalSeconds; // 設定値を記憶
             updateDisplay();
         }
 
@@ -328,7 +330,8 @@
             if (mode === 'stopwatch') {
                 totalSeconds = 0;
                 updateDisplay();
-            } else if (mode === 'timer' && totalSeconds <= 0) {
+            } else if (mode === 'timer') {
+                // タイマーモードの場合も入力値に基づいてリセットしてから開始
                 updateTimerFromInput();
             }
             
@@ -346,6 +349,7 @@
                     totalSeconds--;
                     if (totalSeconds <= 0) {
                         totalSeconds = 0;
+                        updateDisplay();
                         playAlarm();
                         stopTimer();
                     }
@@ -358,9 +362,16 @@
             clearInterval(timerId);
             isRunning = false;
             
-            // 現在の値を保存用に保持
-            const secondsToSave = totalSeconds;
-            const formattedTimeToSave = formatTime(totalSeconds);
+            // 実際に勉強した時間を計算
+            let actualStudySeconds = 0;
+            if (mode === 'stopwatch') {
+                actualStudySeconds = totalSeconds;
+            } else {
+                // タイマーの場合：設定時間 - 残り時間
+                actualStudySeconds = initialTimerSeconds - totalSeconds;
+            }
+            
+            const formattedTimeToSave = formatTime(actualStudySeconds);
             
             document.getElementById('main-text').innerText = 'Start';
             document.getElementById('main-icon').className = 'fas fa-play';
@@ -368,9 +379,9 @@
             document.getElementById('status-label').innerText = 'Session paused';
             document.getElementById('status-label').classList.remove('text-emerald-500');
 
-            // ここではリセットせず、画面に記録を残しておく（次のスタートでリセットされる）
+            // 画面には「今回の結果」を表示したままにする（次のスタートでリセットされる）
 
-            await saveData(secondsToSave, formattedTimeToSave);
+            await saveData(actualStudySeconds, formattedTimeToSave);
         }
 
         function resetTimer() {
@@ -408,7 +419,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                showToast('スプレッドシートに送信完了！');
+                showToast('実質時間を保存完了！');
             } catch (e) {
                 console.error('Fetch Error:', e);
                 showToast('保存エラーが発生しました');
