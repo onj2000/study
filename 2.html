@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Focus Storage | クラウド連携学習管理</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  window.fb = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, collection, addDoc, serverTimestamp };
+</script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=JetBrains+Mono:wght@500;700&display=swap');
+  body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+  .timer-card { background: #020617; box-shadow: 0 30px 60px -12px rgba(2, 6, 23, 0.3); }
+  .input-field { border: 2px solid transparent; transition: all 0.3s ease; }
+  .input-field:focus { border-color: #6366f1; background: white; }
+  .setup-step { position: relative; padding-left: 2rem; }
+  .setup-step::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: #e2e8f0;
+  }
+  .setup-step-num {
+    position: absolute; left: -10px; top: 0; width: 22px; height: 22px; 
+    background: #6366f1; color: white; border-radius: 50%; font-size: 10px;
+    display: flex; align-items: center; justify-content: center; font-weight: 800;
+  }
+</style>
+</head>
+<body class="min-h-screen text-slate-900 pb-12">
+
+  <!-- Setup Overlay -->
+  <div id="setup-overlay" class="fixed inset-0 z-[100] bg-slate-50 flex items-center justify-center p-6 transition-all duration-500">
+    <div class="max-w-md w-full space-y-6">
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 bg-indigo-600 rounded-3xl flex items-center justify-center text-white mx-auto mb-4 shadow-xl">
+          <i data-lucide="database" size="32"></i>
+        </div>
+        <h2 class="text-2xl font-black text-slate-800">記録の保存先を選択</h2>
+        <p class="text-sm text-slate-400 mt-2">後からいつでも変更できます</p>
+      </div>
+
+      <div class="grid gap-4">
+        <button onclick="selectStorage('cloud')" class="w-full bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 hover:border-indigo-400 hover:shadow-md transition-all text-left">
+          <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center"><i data-lucide="cloud"></i></div>
+          <div><p class="font-bold text-slate-800">クラウド保存 (Firebase)</p><p class="text-[10px] text-slate-400">スマホとPCでリアルタイムに同期</p></div>
+        </button>
+
+        <button onclick="selectStorage('gas')" class="w-full bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 hover:border-green-400 hover:shadow-md transition-all text-left">
+          <div class="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center"><i data-lucide="table"></i></div>
+          <div><p class="font-bold text-slate-800">スプレッドシート連携 (GAS)</p><p class="text-[10px] text-slate-400">Googleスプレッドシートに自動書き込み</p></div>
+        </button>
+
+        <button onclick="selectStorage('local')" class="w-full bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm flex items-center gap-4 hover:border-slate-300 hover:shadow-md transition-all text-left">
+          <div class="w-12 h-12 bg-slate-50 text-slate-500 rounded-2xl flex items-center justify-center"><i data-lucide="shield-check"></i></div>
+          <div><p class="font-bold text-slate-800">ローカル保存</p><p class="text-[10px] text-slate-400">設定なしですぐに開始（このブラウザのみ）</p></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings / Setup Modal -->
+  <div id="settings-modal" class="fixed inset-0 z-[110] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-white w-full max-w-lg rounded-[2.5rem] p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div id="settings-header" class="flex justify-between items-center mb-6">
+        <h3 id="settings-title" class="text-xl font-black flex items-center gap-2">接続設定</h3>
+        <button onclick="toggleSettings(false)" class="p-2 hover:bg-slate-100 rounded-full transition-colors"><i data-lucide="x"></i></button>
+      </div>
+
+      <!-- GAS Setup Page -->
+      <div id="setup-gas" class="space-y-6 hidden">
+        <div class="bg-green-50 p-6 rounded-3xl mb-4">
+          <h4 class="font-bold text-green-800 mb-4 flex items-center gap-2"><i data-lucide="list-checks" size="18"></i> 3分で完了！GASの設定</h4>
+          <div class="space-y-4 text-xs text-green-700 leading-relaxed">
+            <div class="setup-step"><span class="setup-step-num">1</span>
+              スプレッドシートを作成し、メニューの<b>「拡張機能」→「Apps Script」</b>を開きます。
+            </div>
+            <div class="setup-step"><span class="setup-step-num">2</span>
+              下のボタンを押してコードをコピーし、エディタに貼り付けて保存します。
+              <button onclick="copyGasCode()" class="mt-2 block w-full py-2 bg-white border border-green-200 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-green-100 transition-all text-green-600">
+                <i data-lucide="copy" size="14"></i> GASコードをコピー
+              </button>
+            </div>
+            <div class="setup-step"><span class="setup-step-num">3</span>
+              右上の<b>「デプロイ」→「新しいデプロイ」</b>から「ウェブアプリ」を選択。アクセスできるユーザーを<b>「全員」</b>にしてデプロイし、URLを下に貼り付けてください。
+            </div>
+          </div>
+        </div>
+        <div class="space-y-2">
+          <label class="text-[10px] font-black text-slate-400 uppercase ml-2">Web App URL</label>
+          <input id="gas-url-input" placeholder="https://script.google.com/macros/s/..." class="w-full px-5 py-4 bg-slate-50 rounded-2xl text-xs outline-none border-2 border-transparent focus:border-green-400 focus:bg-white transition-all">
+        </div>
+        <button onclick="saveGasConfig()" class="w-full py-5 bg-green-600 text-white rounded-[1.8rem] font-bold shadow-xl shadow-green-100 active:scale-95 transition-all">連携を開始する</button>
+      </div>
+
+      <!-- Firebase Setup Page -->
+      <div id="setup-firebase" class="space-y-6 hidden">
+        <div class="bg-indigo-50 p-6 rounded-3xl mb-4">
+          <h4 class="font-bold text-indigo-800 mb-4 flex items-center gap-2"><i data-lucide="list-checks" size="18"></i> Firebaseの設定手順</h4>
+          <div class="space-y-4 text-xs text-indigo-700 leading-relaxed">
+            <div class="setup-step"><span class="setup-step-num">1</span>
+              Firebase Consoleでプロジェクトを作成し、<b>「ウェブアプリ」</b>を追加。
+            </div>
+            <div class="setup-step"><span class="setup-step-num">2</span>
+              <b>Authentication</b>で「匿名」または「メール」を有効にし、<b>Firestore Database</b>を作成（テストモード推奨）します。
+            </div>
+            <div class="setup-step"><span class="setup-step-num">3</span>
+              「プロジェクト設定」下部の<b>firebaseConfig</b>にある値を下記に入力してください。
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 gap-4">
+          <div class="space-y-1">
+            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">apiKey</label>
+            <input id="fb-apiKey" class="w-full px-5 py-3 bg-slate-50 rounded-xl text-xs outline-none border-2 border-transparent focus:border-indigo-400 focus:bg-white transition-all">
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">authDomain</label>
+            <input id="fb-authDomain" class="w-full px-5 py-3 bg-slate-50 rounded-xl text-xs outline-none border-2 border-transparent focus:border-indigo-400 focus:bg-white transition-all">
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] font-black text-slate-400 uppercase ml-2">projectId</label>
+            <input id="fb-projectId" class="w-full px-5 py-3 bg-slate-50 rounded-xl text-xs outline-none border-2 border-transparent focus:border-indigo-400 focus:bg-white transition-all">
+          </div>
+        </div>
+        <button onclick="saveFirebaseConfig()" class="w-full py-5 bg-indigo-600 text-white rounded-[1.8rem] font-bold shadow-xl shadow-indigo-100 active:scale-95 transition-all">連携を開始する</button>
+      </div>
+
+      <button onclick="resetEverything()" class="w-full mt-6 py-3 text-rose-400 text-[10px] font-bold uppercase tracking-widest hover:bg-rose-50 rounded-xl transition-all">データを初期化する</button>
+    </div>
+  </div>
+
+  <!-- Main App Content -->
+  <div id="app" class="max-w-md mx-auto p-6">
+    <header class="flex justify-between items-center mb-8">
+      <div class="flex items-center gap-3">
+        <div id="storage-indicator-icon" class="w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg">
+          <i data-lucide="shield-check"></i>
+        </div>
+        <div>
+          <h1 class="text-[9px] font-black tracking-[0.2em] text-slate-400 uppercase leading-none mb-1">Status</h1>
+          <p id="storage-indicator-text" class="text-xs font-bold text-slate-800 leading-none">Local Mode</p>
+        </div>
+      </div>
+      <div class="flex gap-1">
+        <button onclick="exportCSV()" class="p-2.5 text-slate-300 hover:text-green-500 transition-all"><i data-lucide="file-spreadsheet"></i></button>
+        <button onclick="toggleSettings(true)" class="p-2.5 text-slate-300 hover:text-indigo-500 transition-all"><i data-lucide="settings"></i></button>
+      </div>
+    </header>
+
+    <!-- Timer Card -->
+    <div class="flex bg-slate-200/50 p-1.5 rounded-[1.5rem] mb-6">
+      <button id="sw-tab" onclick="changeMode('stopwatch')" class="flex-1 py-3 text-[11px] font-black rounded-[1.2rem] transition-all bg-white shadow-sm text-slate-900">STOPWATCH</button>
+      <button id="tm-tab" onclick="changeMode('timer')" class="flex-1 py-3 text-[11px] font-black rounded-[1.2rem] transition-all text-slate-400">TIMER</button>
+    </div>
+
+    <section id="timer-display-card" class="timer-card rounded-[3.5rem] p-12 text-center text-white relative ring-8 ring-white mb-8 transition-all">
+      <div id="timer-status" class="text-[10px] font-black text-indigo-400 tracking-[0.4em] mb-6 uppercase">READY</div>
+      <div id="main-time" class="text-6xl font-mono tabular-nums tracking-tighter leading-none mb-2">00:00</div>
+      <div id="sub-time" class="text-[10px] font-mono text-slate-500 uppercase tracking-widest">00 HOURS</div>
+
+      <!-- Timer Specific Settings -->
+      <div id="timer-adjuster" class="mt-8 flex items-center justify-center gap-3 hidden">
+        <button onclick="adjustTarget(-5)" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs hover:bg-slate-700 transition-colors">－</button>
+        <div id="target-label" class="bg-slate-800/80 px-6 py-2 rounded-2xl font-bold text-indigo-400 min-w-[80px]">25m</div>
+        <button onclick="adjustTarget(5)" class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-xs hover:bg-slate-700 transition-colors">＋</button>
+      </div>
+    </section>
+
+    <!-- Form -->
+    <div class="space-y-4 mb-8">
+      <div class="relative"><i data-lucide="book" class="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300"></i>
+      <input id="subject" type="text" placeholder="なにを勉強しますか？" class="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-50 rounded-[1.8rem] outline-none input-field text-sm font-semibold"></div>
+      <div class="relative"><i data-lucide="pen" class="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300"></i>
+      <input id="memo" type="text" placeholder="ひとことメモ" class="w-full pl-14 pr-6 py-5 bg-white border-2 border-slate-50 rounded-[1.8rem] outline-none input-field text-sm font-semibold"></div>
+    </div>
+
+    <!-- Actions -->
+    <div class="grid grid-cols-4 gap-4 mb-10">
+      <button id="start-btn" onclick="toggleMain()" class="col-span-3 py-6 bg-slate-900 text-white rounded-[2rem] font-black text-sm uppercase tracking-widest shadow-2xl active:scale-95 transition-all">START</button>
+      <button onclick="resetTimer()" class="bg-white border-2 border-slate-50 text-slate-300 rounded-[2rem] flex items-center justify-center hover:text-slate-500 transition-all"><i data-lucide="rotate-ccw"></i></button>
+    </div>
+
+    <!-- History -->
+    <section>
+      <div class="flex items-center justify-between mb-4 px-1">
+        <h3 class="font-black text-[10px] text-slate-400 uppercase tracking-widest flex items-center gap-2"><i data-lucide="history" size="12"></i> Recent Activity</h3>
+      </div>
+      <div id="history-container" class="space-y-3"></div>
+    </section>
+  </div>
+
+  <script>
+    // --- Global State ---
+    let storageType = localStorage.getItem('fs_storage_type') || null;
+    let mode = 'stopwatch';
+    let isRunning = false;
+    let currentSeconds = 0;
+    let targetMinutes = 25;
+    let timerInterval = null;
+    let firebaseDB = null;
+    let currentUserID = null;
+
+    const GAS_CODE_SNIPPET = `function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["日付", "教科", "メモ", "時間(秒)", "分数"]);
+  }
+  sheet.appendRow([
+    new Date(data.timestamp),
+    data.subject,
+    data.memo,
+    data.seconds,
+    (data.seconds / 60).toFixed(2)
+  ]);
+  return ContentService.createTextOutput("Success");
+}`;
+
+    // --- Lifecycle ---
+    window.onload = () => {
+      lucide.createIcons();
+      if (storageType) {
+        document.getElementById('setup-overlay').style.display = 'none';
+        initStorage();
+      }
+      updateDisplay();
+      renderHistory();
+    };
+
+    function selectStorage(type) {
+      storageType = type;
+      localStorage.setItem('fs_storage_type', type);
+      document.getElementById('setup-overlay').classList.add('opacity-0', 'pointer-events-none');
+      setTimeout(() => {
+        document.getElementById('setup-overlay').style.display = 'none';
+        if (type !== 'local') toggleSettings(true);
+        initStorage();
+      }, 500);
+    }
+
+    function initStorage() {
+      const label = document.getElementById('storage-indicator-text');
+      const iconWrap = document.getElementById('storage-indicator-icon');
+      
+      if (storageType === 'cloud') {
+        label.textContent = "Cloud Active";
+        iconWrap.className = "w-10 h-10 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg";
+        iconWrap.innerHTML = '<i data-lucide="cloud"></i>';
+        setupFirebase();
+      } else if (storageType === 'gas') {
+        label.textContent = "Spreadsheet Linked";
+        iconWrap.className = "w-10 h-10 bg-green-600 text-white rounded-2xl flex items-center justify-center shadow-lg";
+        iconWrap.innerHTML = '<i data-lucide="table"></i>';
+      } else {
+        label.textContent = "Local Mode";
+        iconWrap.className = "w-10 h-10 bg-slate-900 text-white rounded-2xl flex items-center justify-center shadow-lg";
+        iconWrap.innerHTML = '<i data-lucide="shield-check"></i>';
+      }
+      lucide.createIcons();
+    }
+
+    // --- UI Helpers ---
+    function toggleSettings(show) {
+      const modal = document.getElementById('settings-modal');
+      modal.classList.toggle('hidden', !show);
+      document.getElementById('setup-gas').classList.toggle('hidden', storageType !== 'gas');
+      document.getElementById('setup-firebase').classList.toggle('hidden', storageType !== 'cloud');
+      
+      if (show) {
+        if (storageType === 'gas') document.getElementById('gas-url-input').value = localStorage.getItem('gas_url_v3') || '';
+        if (storageType === 'cloud') {
+          const config = JSON.parse(localStorage.getItem('fb_config_v3') || '{}');
+          document.getElementById('fb-apiKey').value = config.apiKey || '';
+          document.getElementById('fb-authDomain').value = config.authDomain || '';
+          document.getElementById('fb-projectId').value = config.projectId || '';
+        }
+      }
+    }
+
+    function copyGasCode() {
+      const textArea = document.createElement("textarea");
+      textArea.value = GAS_CODE_SNIPPET;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      alert("GASコードをコピーしました！エディタに貼り付けてください。");
+    }
+
+    function changeMode(m) {
+      if (isRunning) return;
+      mode = m;
+      document.getElementById('sw-tab').className = m === 'stopwatch' ? 'flex-1 py-3 text-[11px] font-black rounded-[1.2rem] transition-all bg-white shadow-sm text-slate-900' : 'flex-1 py-3 text-[11px] font-black rounded-[1.2rem] transition-all text-slate-400';
+      document.getElementById('tm-tab').className = m === 'timer' ? 'flex-1 py-3 text-[11px] font-black rounded-[1.2rem] transition-all bg-white shadow-sm text-slate-900' : 'flex-1 py-3 text-[11px] font-black rounded-[1.2rem] transition-all text-slate-400';
+      document.getElementById('timer-adjuster').classList.toggle('hidden', m !== 'timer');
+      
+      currentSeconds = (m === 'timer') ? targetMinutes * 60 : 0;
+      updateDisplay();
+    }
+
+    function adjustTarget(val) {
+      targetMinutes = Math.max(1, targetMinutes + val);
+      document.getElementById('target-label').textContent = `${targetMinutes}m`;
+      currentSeconds = targetMinutes * 60;
+      updateDisplay();
+    }
+
+    function updateDisplay() {
+      const mins = Math.floor(currentSeconds / 60).toString().padStart(2, '0');
+      const secs = (currentSeconds % 60).toString().padStart(2, '0');
+      document.getElementById('main-time').textContent = `${mins}:${secs}`;
+      
+      if (mode === 'stopwatch') {
+        const hrs = Math.floor(currentSeconds / 3600).toString().padStart(2, '0');
+        document.getElementById('sub-time').textContent = `${hrs} HOURS ELAPSED`;
+      } else {
+        document.getElementById('sub-time').textContent = `REMAINING: ${Math.floor(currentSeconds/60)}M`;
+      }
+    }
+
+    // --- Core Timer Logic ---
+    function toggleMain() {
+      if (isRunning) {
+        completeSession();
+      } else {
+        startSession();
+      }
+    }
+
+    function startSession() {
+      isRunning = true;
+      document.getElementById('start-btn').textContent = "完了して記録";
+      document.getElementById('start-btn').classList.replace('bg-slate-900', 'bg-rose-500');
+      document.getElementById('timer-status').textContent = "DEEP FOCUSING";
+      document.getElementById('timer-status').className = "text-[10px] font-black text-rose-500 tracking-[0.4em] mb-6 uppercase";
+      
+      timerInterval = setInterval(() => {
+        if (mode === 'stopwatch') {
+          currentSeconds++;
+        } else {
+          currentSeconds--;
+          if (currentSeconds <= 0) completeSession(true);
+        }
+        updateDisplay();
+      }, 1000);
+    }
+
+    function completeSession(isAuto = false) {
+      clearInterval(timerInterval);
+      
+      let finalSeconds = 0;
+      if (mode === 'stopwatch') {
+        finalSeconds = currentSeconds;
+      } else {
+        finalSeconds = isAuto ? (targetMinutes * 60) : (targetMinutes * 60 - currentSeconds);
+      }
+
+      if (finalSeconds > 0) saveToHistory(finalSeconds);
+
+      isRunning = false;
+      document.getElementById('start-btn').textContent = "START";
+      document.getElementById('start-btn').classList.replace('bg-rose-500', 'bg-slate-900');
+      document.getElementById('timer-status').textContent = "READY";
+      document.getElementById('timer-status').className = "text-[10px] font-black text-indigo-400 tracking-[0.4em] mb-6 uppercase";
+      
+      resetTimer();
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval);
+      isRunning = false;
+      currentSeconds = (mode === 'timer') ? targetMinutes * 60 : 0;
+      updateDisplay();
+      document.getElementById('start-btn').textContent = "START";
+      document.getElementById('start-btn').classList.replace('bg-rose-500', 'bg-slate-900');
+    }
+
+    // --- Data Management ---
+    async function saveToHistory(sec) {
+      const entry = {
+        subject: document.getElementById('subject').value || '未分類',
+        memo: document.getElementById('memo').value || '',
+        seconds: sec,
+        timestamp: Date.now()
+      };
+
+      // 1. Local Storage
+      const list = JSON.parse(localStorage.getItem('fs_logs_v3') || '[]');
+      list.unshift(entry);
+      localStorage.setItem('fs_logs_v3', JSON.stringify(list.slice(0, 50)));
+
+      // 2. GAS Web App
+      const gasUrl = localStorage.getItem('gas_url_v3');
+      if (storageType === 'gas' && gasUrl) {
+        fetch(gasUrl, { method: 'POST', mode: 'no-cors', body: JSON.stringify(entry) });
+      }
+
+      // 3. Firebase
+      if (storageType === 'cloud' && firebaseDB && currentUserID) {
+        try {
+          await window.fb.addDoc(window.fb.collection(firebaseDB, 'artifacts', 'focus-storage', 'users', currentUserID, 'history'), {
+            ...entry,
+            created_at: window.fb.serverTimestamp()
+          });
+        } catch (e) { console.error("Firebase Sync Error", e); }
+      }
+
+      document.getElementById('subject').value = '';
+      document.getElementById('memo').value = '';
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const container = document.getElementById('history-container');
+      const items = JSON.parse(localStorage.getItem('fs_logs_v3') || '[]');
+      
+      container.innerHTML = items.length ? '' : '<div class="text-center py-10 bg-white rounded-3xl border-2 border-dashed border-slate-50"><p class="text-[10px] font-black text-slate-200 uppercase tracking-widest">No Activities Recorded</p></div>';
+      
+      items.slice(0, 5).forEach(item => {
+        const div = document.createElement('div');
+        div.className = "p-5 bg-white border border-slate-50 rounded-[1.8rem] flex justify-between items-center hover:shadow-lg transition-all group";
+        div.innerHTML = `
+          <div>
+            <p class="text-xs font-black text-slate-700">${item.subject}</p>
+            <p class="text-[10px] text-slate-400">${item.memo}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-sm font-black text-indigo-600 group-hover:scale-110 transition-all">${Math.floor(item.seconds/60)}m ${item.seconds%60}s</p>
+            <p class="text-[9px] font-bold text-slate-300">${new Date(item.timestamp).toLocaleDateString()}</p>
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // --- Configuration Logic ---
+    function saveGasConfig() {
+      const url = document.getElementById('gas-url-input').value;
+      if (!url.startsWith('https://')) return alert('有効なURLを入力してください');
+      localStorage.setItem('gas_url_v3', url);
+      toggleSettings(false);
+    }
+
+    function saveFirebaseConfig() {
+      const conf = {
+        apiKey: document.getElementById('fb-apiKey').value,
+        authDomain: document.getElementById('fb-authDomain').value,
+        projectId: document.getElementById('fb-projectId').value,
+      };
+      localStorage.setItem('fb_config_v3', JSON.stringify(conf));
+      location.reload();
+    }
+
+    async function setupFirebase() {
+      const config = JSON.parse(localStorage.getItem('fb_config_v3'));
+      if (!config || !config.apiKey) return;
+      try {
+        const app = window.fb.initializeApp(config);
+        const auth = window.fb.getAuth(app);
+        firebaseDB = window.fb.getFirestore(app);
+        await window.fb.signInAnonymously(auth);
+        window.fb.onAuthStateChanged(auth, user => {
+          if (user) currentUserID = user.uid;
+        });
+      } catch (e) { console.error(e); }
+    }
+
+    function resetEverything() {
+      if (confirm("全ての設定と履歴を消去して初期状態に戻しますか？")) {
+        localStorage.clear();
+        location.reload();
+      }
+    }
+
+    function exportCSV() {
+      const items = JSON.parse(localStorage.getItem('fs_logs_v3') || '[]');
+      let csv = "\uFEFF日付,教科,メモ,秒数\n";
+      items.forEach(i => csv += `"${new Date(i.timestamp).toLocaleString()}","${i.subject}","${i.memo}",${i.seconds}\n`);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `focus_storage_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    }
+  </script>
+</body>
+</html>
