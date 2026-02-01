@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>Focus Storage α|多機能版学習記録タイマー</title>
+<title>Focus Storage | 学習記録タイマー</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <!-- Tailwind -->
@@ -202,7 +202,7 @@
 <script>
 lucide.createIcons();
 
-const appId = "focus-storage-v13"; // Using same ID for continuity
+const appId = "focus-storage-v13"; 
 let isRunning = false;
 let sec = 0;
 let timer = null;
@@ -320,12 +320,15 @@ function exportXLSX() {
   XLSX.writeFile(workbook, `focus_history_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
-// --- Original Logic ---
+// --- GAS Logic (Updated for hh:mm:ss) ---
 const GAS_CODE = `function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var data = JSON.parse(e.postData.contents);
-  if (sheet.getLastRow() === 0) sheet.appendRow(["日時", "教科", "メモ", "秒数"]);
-  sheet.appendRow([new Date(), data.subject, data.memo, data.seconds]);
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["日時", "教科", "メモ", "経過時間(hh:mm:ss)", "合計秒数"]);
+  }
+  // スプレッドシート側のセルの表示形式を「経過時間」に設定しておくとより正確に管理できます
+  sheet.appendRow([new Date(), data.subject, data.memo, data.duration_str, data.seconds]);
   return ContentService.createTextOutput("OK");
 }`;
 
@@ -449,10 +452,18 @@ function updateDisplay() {
 
 async function saveLog(seconds) {
   if (seconds <= 0) return;
+  
+  // hh:mm:ss形式の文字列を作成
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainderSeconds = seconds % 60;
+  const durationStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainderSeconds).padStart(2, '0')}`;
+
   const data = {
     subject: document.getElementById('subject').value || '未分類',
     memo: document.getElementById('memo').value || '',
     seconds,
+    duration_str: durationStr,
     timestamp: Date.now()
   };
 
